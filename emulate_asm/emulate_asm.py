@@ -27,6 +27,7 @@ def args_parser():
     parser = argparse.ArgumentParser(description="--- ASMDeCode ---")
     parser.add_argument("-a","--assemble", action="store_true", help="Assemble")
     parser.add_argument("-d","--disassemble", action="store_true", help="Disassemble")
+    parser.add_argument("-r","--raw", action="store_true", help="Do not hex decode parameter")
     parser.add_argument("-e","--emulate", action="store_true", help="Emulate and dump final context and provide memory areas")
     parser.add_argument("-x64","--x8664", action="store_true", help="Use intel x86_64 syntax")
     parser.add_argument("-f","--file", metavar="<file>", help="file (hex encoded opcodes / asm code)")
@@ -75,9 +76,20 @@ def assemble(data, x64="False", cArray="False"):
 def getNeededSize(x):
     return ((len(x) & ~0xFFF) + 0x1000)*2
 
+def convertIntStr(x):
+    if x is None:
+        return None
+    if type(x) is str:
+        if x.startswith("0x"):
+            return int(x,16)
+        return int(x)
+    return x
+
 def emulate(data, x64=False, ax=None, bx=None, cx=None, dx=None, si=None, di=None, bp=None, sp=None, r8=None, r9=None, r10=None, r11=None, r12=None, r13=None, r14=None, r15=None, mem1A=None, mem1V=None, mem2A=None, mem2V=None, mem3A=None, mem3V=None, mem4A=None, mem4V=None):
-    data = data.decode("hex")
+    data 
     load_addr = 0x10000
+    stack_addr = 0x40000
+    stack_size = 0x2000
     m = UC_ARCH_X86
     ms = UC_MODE_32
     if x64 is True:
@@ -87,6 +99,9 @@ def emulate(data, x64=False, ax=None, bx=None, cx=None, dx=None, si=None, di=Non
     print "\t[-] Mapping code at 0x%x" % (load_addr)
     mu.mem_map(load_addr, getNeededSize(data))
     mu.mem_write(load_addr, data)
+    print "\t[-] Mapping stack at 0x%x" % (stack_addr)
+    mu.mem_map(stack_addr, stack_size)
+
     # map memory areas
     if mem4A != None and mem4V != None:
         if mem4A.startswith("0x"):
@@ -124,8 +139,25 @@ def emulate(data, x64=False, ax=None, bx=None, cx=None, dx=None, si=None, di=Non
         print "\t[-] Mapping data at 0x%x" % (mem1A)
         mu.mem_map(mem1A, getNeededSize(mem1V))
         mu.mem_write(mem1A, mem1V)
+    ax = convertIntStr(ax)
+    bx = convertIntStr(bx)
+    cx = convertIntStr(cx)
+    dx = convertIntStr(dx)
+    si = convertIntStr(si)
+    di = convertIntStr(di)
+    bp = convertIntStr(bp)
+    sp = convertIntStr(sp)
+    r8 = convertIntStr(r8)
+    r9 = convertIntStr(r9)
+    r10 = convertIntStr(r10)
+    r11 = convertIntStr(r11)
+    r12 = convertIntStr(r12)
+    r13 = convertIntStr(r13)
+    r14 = convertIntStr(r14)
+    r15 = convertIntStr(r15)
     # set registers
     if x64 is True:
+        mu.reg_write(UC_X86_REG_RSP, stack_addr + stack_size)
         if ax is not None:
             mu.reg_write(UC_X86_REG_RAX, ax)
         if bx is not None:
@@ -159,6 +191,7 @@ def emulate(data, x64=False, ax=None, bx=None, cx=None, dx=None, si=None, di=Non
         if r15 is not None:
             mu.reg_write(UC_X86_REG_R15, r15)
     else:
+        mu.reg_write(UC_X86_REG_ESP, stack_addr + stack_size)
         if ax is not None:
             mu.reg_write(UC_X86_REG_EAX, ax)
         if bx is not None:
@@ -224,14 +257,14 @@ def emulate(data, x64=False, ax=None, bx=None, cx=None, dx=None, si=None, di=Non
     return
 
 def disassemble(data, x64=False):
-    data = data.decode("hex")
+    data
     m = CS_ARCH_X86
     ms = CS_MODE_32
     if x64 is True:
         ms = CS_MODE_64
     md = Cs(m,ms)
     for i in md.disasm(data,0x1000):
-        print "\t0x%x:\t%s\t%s" % (i.address, i.mnemonic, i.op_str)
+        print "\t0x%x:\t%s\t%s\t%s" % (i.address, str(i.bytes).encode("hex"), i.mnemonic, i.op_str)
     return
 
 if __name__ == '__main__':
@@ -249,6 +282,9 @@ if __name__ == '__main__':
     else:
         data = args.cmdl
 
+    if not args.raw and not args.assemble:
+        data = data.decode("hex")
+
     x64 = False
     if args.x8664:
         x64 = True
@@ -263,7 +299,7 @@ if __name__ == '__main__':
             if args.emulate or args.disassemble:
                 cArray == False
             print "[+] Assembly:"
-            data = assemble(data, x64=x64, cArray=cArray)
+            data = assemble(data, x64=x64, cArray=cArray).decode("hex")
 
     if args.disassemble:
         if capstone_loaded is False:
